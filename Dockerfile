@@ -11,15 +11,16 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive
 
-# 2. 将本地下载好的 Chrome 安装包复制到容器镜像中
-COPY google-chrome-stable_current_amd64.deb /tmp/google-chrome-stable.deb
-
+# 2. 构建时从 Google 官方源下载 Chrome 安装包（海外构建节点可直连 dl.google.com）
 RUN set -x \
     # 3. 替换 Debian 镜像源为清华源
     && sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources \
-    # 4. 安装本地 Chrome 包及中文字体（apt 会自动补齐 Chrome 所需的 Linux 依赖）
-    #    dbus：headless Chrome 启动时若连不上 /run/dbus/system_bus_socket 会刷大量 ERROR 日志
-    && apt-get update && apt-get install -y --no-install-recommends \
+    # 4. 安装 wget/ca-certificates，再下载 Chrome deb，最后安装 Chrome 包及中文字体
+    #    （apt 会自动补齐 Chrome 所需的 Linux 依赖；dbus：headless Chrome 启动时若连不上
+    #    /run/dbus/system_bus_socket 会刷大量 ERROR 日志）
+    && apt-get update && apt-get install -y --no-install-recommends wget ca-certificates \
+    && wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O /tmp/google-chrome-stable.deb \
+    && apt-get install -y --no-install-recommends \
         /tmp/google-chrome-stable.deb \
         fonts-wqy-zenhei \
         fonts-wqy-microhei \
