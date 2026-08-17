@@ -1,0 +1,26 @@
+{
+  "enabled": true,
+  "listen_host": "127.0.0.1",
+  "listen_port": 8790,
+  "feishu": {
+    "app_id": "app_id_xxxxx",
+    "app_secret": "app_secret_xxxxx",
+    "target_chat_id": "target_chat_id_xxxxx",
+    "target_open_id": ""
+  },
+  "forward_url": "http://127.0.0.1:8000/api/im/feishu/websocket",
+  "card": {
+    "max_panels": 12,
+    "window_lines": 30,
+    "debounce_sec": 2.5,
+    "max_batch_wait_sec": 5.0,
+    "min_patch_interval_sec": 2.0,
+    "max_messages_per_card": 16,
+    "title_brief_len": 10,
+    "persist_mapping": true,
+    "data_dir": "~/.agent-assist"
+  },
+  "decision": {
+    "timeout_sec": 60
+  }
+}

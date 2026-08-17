@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Claude Code</title>
+</head>
+<body style="background-color: #f6f8fa; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;">
+
+  <!-- 你的主卡片容器 -->
+  <div style="font-family: ui-monospace, SFMono-Regular, Consolas, monospace; width: 450px; border: 1px solid #d0d7de; border-radius: 8px; padding: 14px; background-color: #ffffff; color: #24292f; box-sizing: border-box; font-size: 13px;">
+
+    <!-- 1. 头部状态栏 -->
+    <div style="display: flex; justify-content: space-between; align-items: center; font-weight: bold;">
+      <span>🤖 Claude Code · caimiao_backend</span>
+      <span style="font-size: 11px; padding: 2px 8px; background-color: #fff8c5; color: #9a6700; border-radius: 12px; border: 1px solid #f2e08a;">⏳ 待确认</span>
+    </div>
+    <div style="font-size: 12px; color: #57606a; margin-top: 4px;">
+      session xxxx · 步骤 3/…
+    </div>
+
+    <hr style="border: none; border-top: 1px solid #d0d7de; margin: 10px 0;">
+
+    <!-- 2. 环境与时间 -->
+    <div style="font-size: 12px; color: #57606a; margin-bottom: 10px;">
+      🗂 cwd · 开始 14:30:05 · 已更新 14:35:12
+    </div>
+
+    <!-- 3. Collapsible Panel 1 (默认折叠) -->
+    <details style="border: 1px solid #e1e4e8; border-radius: 6px; margin-bottom: 8px; overflow: hidden;">
+      <summary style="padding: 8px 10px; background: #f6f8fa; cursor: pointer; font-weight: 500; user-select: none;">
+        🕐 14:30 · 👤 用户请求
+      </summary>
+      <div style="padding: 10px; background: #ffffff; font-size: 12px; border-top: 1px solid #e1e4e8; color: #57606a;">
+        请帮我给 backend 模块添加一个获取用户列表的 API 接口，并写好测试用例。
+      </div>
+    </details>
+
+    <!-- 4. Collapsible Panel 2 (默认折叠) -->
+    <details style="border: 1px solid #e1e4e8; border-radius: 6px; margin-bottom: 8px; overflow: hidden;">
+      <summary style="padding: 8px 10px; background: #f6f8fa; cursor: pointer; font-weight: 500; user-select: none;">
+        🕐 14:31 · 🤖 Claude 回复 + 🔧 Bash/Write
+      </summary>
+      <div style="padding: 10px; background: #f6f8fa; font-size: 11px; border-top: 1px solid #e1e4e8; color: #24292f; line-height: 1.5;">
+        <div>• 执行了：<code>git status</code></div>
+        <div>• 修改了：<code>src/controllers/user.js</code></div>
+      </div>
+    </details>
+
+    <!-- 5. Pending Panel (高亮 + 默认 open 展开) -->
+    <details open style="border: 1px solid #0969da; border-radius: 6px; margin-bottom: 12px; overflow: hidden;">
+      <summary style="padding: 8px 10px; background: #ddf4ff; color: #0969da; cursor: pointer; font-weight: bold; user-select: none;">
+        🕐 14:35 · ⏳ 请求允许执行 &lt;tool&gt;
+      </summary>
+      <div style="padding: 10px; background: #ffffff; font-size: 12px; border-top: 1px solid #54a3ff; color: #24292f;">
+        <div style="margin-bottom: 6px; color: #57606a;">即将在终端运行以下高危命令：</div>
+        <pre style="margin: 0; padding: 8px; background: #f6f8fa; border-radius: 4px; border: 1px solid #d0d7de; font-size: 11px; overflow-x: auto;"><code>npm run db:migrate -- --env production</code></pre>
+      </div>
+    </details>
+
+    <!-- 6. 底部等宽按钮组 -->
+    <div style="display: flex; gap: 8px;">
+      <button style="flex: 1; padding: 7px 0; font-size: 12px; font-weight: 600; border: 1px solid #1f883d; border-radius: 6px; background: #2da44e; color: #ffffff; cursor: pointer;">✅ 允许</button>
+      <button style="flex: 1; padding: 7px 0; font-size: 12px; font-weight: 600; border: 1px solid #cf222e; border-radius: 6px; background: #f6f8fa; color: #cf222e; cursor: pointer;">❌ 拒绝</button>
+      <button style="flex: 1; padding: 7px 0; font-size: 12px; font-weight: 500; border: 1px solid #d0d7de; border-radius: 6px; background: #f6f8fa; color: #24292f; cursor: pointer;">⏸ 去终端处理</button>
+    </div>
+
+  </div>
+
+</body>
+</html>
