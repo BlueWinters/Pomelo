@@ -11,27 +11,29 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive
 
-# 2. 将本地下载好的 Chrome 安装包复制到容器镜像中
-COPY google-chrome-stable_current_amd64.deb /tmp/google-chrome-stable.deb
-
+# 2. 换源与依赖安装
 RUN set -x \
-    # 3. 替换 Debian 镜像源为清华源
-    && sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources \
-    # 4. 安装本地 Chrome 包及中文字体（apt 会自动补齐 Chrome 所需的 Linux 依赖）
-    #    dbus：headless Chrome 启动时若连不上 /run/dbus/system_bus_socket 会刷大量 ERROR 日志
-    && apt-get update \
-    && apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends \
+    # 3. 换 Debian 源为阿里云镜像（ACR 构建环境外网受限：清华源返回 403，dl.google.com 不通）
+    && sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources \
+    # 4. 安装 wget/ca-certificates，从 Google 官方源下载 Chrome deb
+    #    （本机可直连 dl.google.com；若日后改走 ACR 云端构建，此步需换成国内可达源）
+    && apt-get update && apt-get install -y --no-install-recommends wget ca-certificates \
+    && wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O /tmp/google-chrome-stable.deb \
+    # 5. 安装 Chrome 包及中文字体（apt 自动补齐 Chrome 所需 Linux 依赖；
+    #    dbus：headless Chrome 启动时若连不上 /run/dbus/system_bus_socket 会刷大量 ERROR 日志）
+    && apt-get install -y --no-install-recommends \
         /tmp/google-chrome-stable.deb \
         fonts-wqy-zenhei \
         fonts-wqy-microhei \
+        socat \
         dbus \
-    # 5. 安装 Python 依赖（含 playwright 及 playwright-stealth 反爬加固库）
-    && pip install --no-cache-dir -i https://mirrors.cloud.tencent.com/pypi/simple/ \
+    # 6. 安装 Python 依赖（走阿里云 pypi 镜像）
+    && pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ \
         playwright==1.61.0 \
         playwright-stealth \
-    # 6. 补齐其他可能缺失的底层系统依赖
+    # 7. 补齐其他可能缺失的底层系统依赖
     && playwright install-deps \
-    # 7. 清理安装包和缓存减小镜像体积
+    # 8. 清理安装包和缓存减小镜像体积
     && rm -f /tmp/google-chrome-stable.deb \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
