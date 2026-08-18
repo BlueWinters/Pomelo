@@ -81,7 +81,17 @@ cc2im/cc_card.py + cc_feishu.py → 飞书交互卡片 → 你的飞书终端
 
 ### 2. 启动常驻进程（先启动）
 
-双击 `assistant/cc2im/start_cc_monitor.bat`（自动检测端口占用、从 `assistant/` 目录启动并写日志），或手动：
+双击 `assistant/cc2im/start_cc_monitor.bat`（自动检测端口占用、从 `assistant/` 目录启动并写日志），或在 `assistant/cc2im/` 下带子命令运行：
+
+```bat
+start_cc_monitor.bat            运行在前台（Ctrl+C 停止，日志同时写 local\_cc_service.log）
+start_cc_monitor.bat bg         后台运行（最小化窗口，日志写 local\_cc_service.log）
+start_cc_monitor.bat status     查看状态 + /health 健康检查
+start_cc_monitor.bat stop       停止服务（结束占用 8790 端口的进程）
+start_cc_monitor.bat restart    重启（先 stop 再前台运行）
+```
+
+手动启动：
 
 ```bash
 cd assistant
