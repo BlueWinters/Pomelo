@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """RPA 定制镜像的 HTTP 服务（运行在 rpa-chrome-server 容器内）：会话文件浏览 + 浏览器快照。
 
-供财喵 dashboard 运维使用，仅经 compose 网络被 api 访问（不发布宿主端口）：
+供财喵 dashboard 运维使用，仅经 compose/swarm 网络被 api 访问（不发布宿主端口）：
 
 1. 会话文件浏览：只读暴露 RPA 会话目录（默认 /tmp/.sessions），
    提供 JSON 目录列表 + 文件下载/预览接口，路径严格限制在根目录内
    （.. / 绝对路径 / symlink 逃逸均拒绝），可用 token 鉴权。
 2. 浏览器快照：POST /api/snapshot 在【容器内】直连本地 Chrome CDP
-   （127.0.0.1:9222），枚举业务页面逐个截图。默认不落盘、图片 base64 内联
+   （127.0.0.1:9229），枚举业务页面逐个截图。默认不落盘、图片 base64 内联
    返回（调用方可直接预览）；调用方可传 save_to_disk=true 同时落盘并返回路径。
-   CDP 端口不出容器 —— 网络侧永远接触不到 Chrome。
+   Chrome CDP 绑定容器回环、不出容器 —— 网络侧永远接触不到 Chrome。
+
+（worker 直连 Chrome CDP 的低层网络转发由同目录的 cdp_relay.py 提供，本服务
+   不负责 CDP 转发，二者职责分离。）
 
 接口：
     GET  /api/list?path=<相对路径>&token=...
@@ -47,7 +50,7 @@ for _ext, _ct in {".webp": "image/webp", ".svg": "image/svg+xml"}.items():
     mimetypes.add_type(_ct, _ext)
 
 # RPA 浏览器快照
-# 在【容器内】直连本地 Chrome CDP（127.0.0.1:9222，playwright 随镜像安装），
+# 在【容器内】直连本地 Chrome CDP（127.0.0.1:9229，playwright 随镜像安装），
 # 枚举业务页面逐个截图。save_to_disk=false（默认）不落盘，图片 base64 内联返回；
 # true 时同时落盘到 screenshots 目录并返回相对 root 的路径。
 # 注意：只 disconnect，不 close browser —— connect_over_cdp 的 close 会关掉
@@ -55,7 +58,7 @@ for _ext, _ct in {".webp": "image/webp", ".svg": "image/svg+xml"}.items():
 _SKIP_PREFIX = ("chrome://", "devtools://", "edge://", "about:", "chrome-extension://")
 
 
-async def _capture_snapshot(save_to_disk: bool = False) -> dict:
+async def _capture_snapshot(cdp_host: str, cdp_port: int, save_to_disk: bool = False) -> dict:
     from playwright.async_api import async_playwright
 
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -70,7 +73,7 @@ async def _capture_snapshot(save_to_disk: bool = False) -> dict:
 
     pw = await async_playwright().start()
     try:
-        browser = await pw.chromium.connect_over_cdp("http://127.0.0.1:9222", timeout=15000)
+        browser = await pw.chromium.connect_over_cdp(f"http://{cdp_host}:{cdp_port}", timeout=15000)
         for ctx in browser.contexts:
             for page in ctx.pages:
                 url = page.url or ""
@@ -100,7 +103,7 @@ async def _capture_snapshot(save_to_disk: bool = False) -> dict:
         await pw.stop()
 
     return {
-        "endpoint": "http://127.0.0.1:9222",
+        "endpoint": f"http://{cdp_host}:{cdp_port}",
         "ts": ts,
         "total_pages": len(pages),
         "save_to_disk": save_to_disk,
@@ -130,6 +133,9 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "RPAServer/1.0"
     root: Path = Path("/tmp/.sessions")
     token: str = ""
+    # Chrome CDP 回环地址（快照在容器内直连），由 --cdp-host/--cdp-port 传入
+    cdp_host: str = "127.0.0.1"
+    cdp_port: int = 9229
 
     # 工具
     def _ok(self, code: int, body: bytes, ctype: str = "application/json") -> None:
@@ -186,7 +192,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         save_to_disk = bool(self._read_json_body().get("save_to_disk"))
         try:
-            result = asyncio.run(_capture_snapshot(save_to_disk=save_to_disk))
+            result = asyncio.run(_capture_snapshot(self.cdp_host, self.cdp_port, save_to_disk=save_to_disk))
         except Exception as e:  # noqa: BLE001
             self._err(500, f"snapshot failed: {type(e).__name__}: {e}")
             return
@@ -253,14 +259,20 @@ def main():
     ap.add_argument("--port", type=int, default=9224)
     ap.add_argument("--root", default=os.environ.get("RPA_FILE_ROOT", "/tmp/.sessions"))
     ap.add_argument("--token", default=os.environ.get("RPA_FILE_TOKEN", ""))
+    ap.add_argument("--cdp-host", default="127.0.0.1", help="Chrome CDP 回环地址（快照容器内直连）")
+    ap.add_argument("--cdp-port", type=int, default=9229, help="Chrome CDP 回环端口")
     args = ap.parse_args()
+
     Handler.root = Path(args.root).resolve()
     Handler.root.mkdir(parents=True, exist_ok=True)
     Handler.token = args.token or ""
+    Handler.cdp_host = args.cdp_host
+    Handler.cdp_port = args.cdp_port
     if Handler.token:
         print(f"[rpa-server] serving {Handler.root} on {args.host}:{args.port} (token ON)", flush=True)
     else:
         print(f"[rpa-server] ⚠️ serving {Handler.root} on {args.host}:{args.port} (NO AUTH)", flush=True)
+
     ThreadingHTTPServer((args.host, args.port), Handler).serve_forever()
 
 
