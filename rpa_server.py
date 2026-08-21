@@ -46,7 +46,7 @@ from pathlib import Path
 for _ext, _ct in {".webp": "image/webp", ".svg": "image/svg+xml"}.items():
     mimetypes.add_type(_ct, _ext)
 
-# ── RPA 浏览器快照 ──────────────────────────────────────────────
+# RPA 浏览器快照
 # 在【容器内】直连本地 Chrome CDP（127.0.0.1:9222，playwright 随镜像安装），
 # 枚举业务页面逐个截图。save_to_disk=false（默认）不落盘，图片 base64 内联返回；
 # true 时同时落盘到 screenshots 目录并返回相对 root 的路径。
@@ -131,7 +131,7 @@ class Handler(BaseHTTPRequestHandler):
     root: Path = Path("/tmp/.sessions")
     token: str = ""
 
-    # ── 工具 ───────────────────────────────────────────────────
+    # 工具
     def _ok(self, code: int, body: bytes, ctype: str = "application/json") -> None:
         self.send_response(code)
         self.send_header("Content-Type", ctype)
@@ -192,7 +192,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._ok(200, json.dumps(result, ensure_ascii=False).encode())
 
-    # ── 目录列表 ───────────────────────────────────────────────
+    # 目录列表
     def _handle_list(self, qs):
         rel = qs.get("path", ["/"])[0].strip() or "/"
         target = _safe_resolve(self.root, rel)
@@ -222,7 +222,7 @@ class Handler(BaseHTTPRequestHandler):
             "path": rel_norm, "parent": parent, "files": files,
         }, ensure_ascii=False).encode())
 
-    # ── 文件内容 ───────────────────────────────────────────────
+    # 文件内容
     def _handle_file(self, qs):
         rel = qs.get("path", [""])[0].strip()
         if not rel:
@@ -243,8 +243,8 @@ class Handler(BaseHTTPRequestHandler):
         ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
         self._ok(200, data, ctype)
 
-    def log_message(self, *args):  # 静默，避免刷屏
-        pass
+    def log_message(self, *args):
+        pass  # 静默，避免刷屏
 
 
 def main():
