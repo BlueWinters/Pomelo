@@ -19,13 +19,15 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     CHROME_CDP_PORT=9229
 
 # 2. 将本地下载好的 Chrome 安装包复制到容器镜像中
-COPY google-chrome-stable_current_amd64.deb /tmp/google-chrome-stable.deb
+#COPY google-chrome-stable_current_amd64.deb /tmp/google-chrome-stable.deb
 
 RUN set -x \
-    # 3. 替换 Debian 镜像源为清华源
-    && sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources \
+    # 3. 替换 Debian 镜像源
+    && sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update  \
+    && apt-get install -y --no-install-recommends wget ca-certificates \
+    && wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O /tmp/google-chrome-stable.deb \
     # 4. 安装 Chrome、中文字体、X11 虚拟屏幕 (Xvfb)、VNC 服务 (x11vnc)、窗口管理器 (fluxbox) 与 noVNC/websockify
-    && apt-get update \
     && apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends \
         /tmp/google-chrome-stable.deb \
         fonts-wqy-zenhei \
