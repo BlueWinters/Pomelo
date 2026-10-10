@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>飞书 Relay 管理</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --card-bg: #16213e;
+    --text: #e0e0e0;
+    --text-secondary: #a0a0b0;
+    --accent: #4fc3f7;
+    --accent-hover: #29b6f6;
+    --success: #66bb6a;
+    --error: #ef5350;
+    --warn: #ffa726;
+    --border: #2a2a4a;
+    --input-bg: #0f0f23;
+    --radius: 8px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 40px 16px;
+  }
+  .container { width: 100%; max-width: 600px; }
+  h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+  }
+
+  /* 状态 */
+  .status-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .status-item { }
+  .status-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+  }
+  .status-value {
+    font-size: 0.9rem;
+    word-break: break-all;
+  }
+  .dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 6px;
+  }
+  .dot-green { background: var(--success); }
+  .dot-red   { background: var(--error); }
+
+  /* 输入 */
+  .input-row {
+    display: flex;
+    gap: 8px;
+  }
+  .input-row input {
+    flex: 1;
+    padding: 10px 12px;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .input-row input:focus { border-color: var(--accent); }
+  .input-row button {
+    padding: 10px 16px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.2s;
+  }
+  .input-row button:hover { background: var(--accent-hover); }
+  .input-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .btn-secondary {
+    padding: 8px 14px;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* 消息 */
+  .msg {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+    display: none;
+  }
+  .msg.show { display: block; }
+  .msg-success { background: rgba(102, 187, 106, 0.15); color: var(--success); }
+  .msg-error   { background: rgba(239, 83, 80, 0.15);  color: var(--error); }
+
+  /* 加载 */
+  .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid var(--text-secondary);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .footer {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    margin-top: 24px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>&#128259; 飞书 Relay 管理</h1>
+
+  <!-- 状态卡片 -->
+  <div class="card">
+    <div class="card-title">运行状态</div>
+    <div class="status-grid">
+      <div class="status-item">
+        <div class="status-label">WebSocket 连接</div>
+        <div class="status-value" id="ws-status">
+          <span class="spinner"></span> 加载中...
+        </div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">运行时间</div>
+        <div class="status-value" id="uptime">--</div>
+      </div>
+    </div>
+    <div class="status-item" style="margin-top:12px;">
+      <div class="status-label">当前转发目标</div>
+      <div class="status-value" id="current-target" style="font-family:monospace;font-size:0.8rem;">
+        <span class="spinner"></span> 加载中...
+      </div>
+    </div>
+  </div>
+
+  <!-- 修改目标卡片 -->
+  <div class="card">
+    <div class="card-title">修改转发目标</div>
+    <div class="input-row">
+      <input type="text" id="target-input"
+             placeholder="http://192.168.1.100:8000/api/im/feishu/websocket"
+             autocomplete="off">
+      <button id="update-btn" onclick="updateTarget()">更新</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn-secondary" onclick="restoreDefault()">恢复默认</button>
+      <button class="btn-secondary" onclick="testTarget()">测试目标</button>
+      <button class="btn-secondary" onclick="refreshStatus()">刷新状态</button>
+    </div>
+    <div id="msg" class="msg"></div>
+  </div>
+
+  <div class="footer">
+    Feishu Relay &middot; 端口 8080
+  </div>
+</div>
+
+<script>
+const API = {
+  status:  '/admin/status',
+  target:  '/admin/target',
+  test:    '/admin/test',
+};
+
+let statusTimer = null;
+
+// ── 页面加载 ──
+window.addEventListener('DOMContentLoaded', () => {
+  refreshStatus();
+  statusTimer = setInterval(refreshStatus, 5000);
+});
+
+// ── 刷新状态 ──
+async function refreshStatus() {
+  try {
+    const resp = await fetch(API.status);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+
+    // WS 连接状态
+    const wsEl = document.getElementById('ws-status');
+    if (data.ws_connected) {
+      wsEl.innerHTML = '<span class="dot dot-green"></span> 已连接';
+    } else {
+      wsEl.innerHTML = '<span class="dot dot-red"></span> 已断开';
+    }
+
+    // 运行时间
+    document.getElementById('uptime').textContent = formatUptime(data.uptime);
+
+    // 当前目标
+    const targetEl = document.getElementById('current-target');
+    targetEl.textContent = data.target || '--';
+    if (!document.getElementById('target-input').value) {
+      document.getElementById('target-input').value = data.target || '';
+    }
+  } catch (err) {
+    document.getElementById('ws-status').innerHTML =
+      '<span class="dot dot-red"></span> 无法获取';
+    console.error('获取状态失败:', err);
+  }
+}
+
+// ── 更新目标 ──
+async function updateTarget() {
+  const input = document.getElementById('target-input');
+  const btn = document.getElementById('update-btn');
+  const url = input.value.trim();
+
+  // 前端基础校验
+  if (!url) {
+    showMsg('请输入目标 URL', 'error');
+    return;
+  }
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    showMsg('URL 必须以 http:// 或 https:// 开头', 'error');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '更新中...';
+
+  try {
+    const resp = await fetch(API.target, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const data = await resp.json();
+
+    if (resp.ok) {
+      showMsg('已更新为 ' + data.url, 'success');
+      refreshStatus();
+    } else {
+      showMsg((data && data.error) || '更新失败', 'error');
+    }
+  } catch (err) {
+    showMsg('网络错误，无法连接到管理服务', 'error');
+    console.error('更新目标失败:', err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '更新';
+  }
+}
+
+// ── 测试目标连通性（向当前目标发送 mock 飞书消息）──
+async function testTarget() {
+  const btn = [...document.querySelectorAll('.btn-secondary')]
+    .find(b => b.textContent === '测试目标');
+  if (!btn) return;
+
+  btn.disabled = true;
+  btn.textContent = '测试中...';
+
+  try {
+    const resp = await fetch(API.test, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await resp.json();
+
+    if (data.ok) {
+      showMsg('目标可达：' + (data.detail || ''), 'success');
+    } else {
+      showMsg('目标异常：' + (data.detail || '未知错误'), 'error');
+    }
+  } catch (err) {
+    showMsg('无法连接到管理服务', 'error');
+    console.error('测试目标失败:', err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '测试目标';
+  }
+}
+
+// ── 恢复默认 ──
+async function restoreDefault() {
+  try {
+    // 先获取默认值（从当前 status 中的 target）
+    const resp = await fetch(API.status);
+    const data = await resp.json();
+    const current = data.target || '';
+
+    // 默认值：从环境变量读取的初始值在页面中无法直接获取，
+    // 这里使用当前的 target（即初始值，如果未被修改过）
+    document.getElementById('target-input').value = current;
+
+    // 如果已知默认值，直接使用
+    const defaultUrl = 'http://api:8000/api/im/feishu/websocket';
+    if (current !== defaultUrl) {
+      document.getElementById('target-input').value = defaultUrl;
+      await updateTarget();
+    } else {
+      showMsg('当前已是默认目标', 'success');
+    }
+  } catch (err) {
+    showMsg('获取默认值失败', 'error');
+  }
+}
+
+// ── 工具函数 ──
+function showMsg(text, type) {
+  const msg = document.getElementById('msg');
+  msg.textContent = (type === 'error' ? '❌ ' : '✅ ') + text;
+  msg.className = 'msg show msg-' + type;
+  // 3 秒后自动淡出
+  setTimeout(() => { msg.classList.remove('show'); }, 4000);
+}
+
+function formatUptime(seconds) {
+  if (!seconds || seconds < 0) return '--';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  const parts = [];
+  if (h > 0) parts.push(h + 'h');
+  if (m > 0) parts.push(m + 'm');
+  parts.push(s + 's');
+  return parts.join(' ');
+}
+
+// ── 回车快捷提交 ──
+document.getElementById('target-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') updateTarget();
+});
+</script>
+</body>
+</html>
