@@ -10,6 +10,9 @@ mkdir -p /run/dbus && rm -f /run/dbus/pid
 dbus-daemon --system --fork
 rm -f /tmp/chrome-profile/Singleton*
 rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
+# 预创建 Chrome 默认下载目录及共享临时下载目录并赋权，防止无头下载因路径不存在而丢弃
+mkdir -p /root/Downloads /tmp/downloads
+chmod 777 /root/Downloads /tmp/downloads
 
 # 2. 启动 Xvfb 虚拟显示屏幕 (默认 1920x1080 24位真彩色)
 echo "[entrypoint] 🖥️ Starting Xvfb on display ${DISPLAY:-:99} (${RESOLUTION:-1920x1080x24})..."
@@ -55,7 +58,8 @@ DISPLAY="${DISPLAY:-:99}" google-chrome \
     --no-first-run \
     --no-default-browser-check \
     --disable-search-engine-choice-screen \
-    --disable-features=Translate \
+    --disable-features=Translate,InsecureDownloadWarnings \
+    --safebrowsing-disable-download-protection \
     --disable-gpu \
     --remote-allow-origins=* \
     --log-level=3 \

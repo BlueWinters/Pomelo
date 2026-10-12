@@ -45,6 +45,7 @@ RUN set -x \
     # 5. 配置 noVNC 默认访问页 (访问 http://ip:6080/ 直接打开 vnc.html 画面)
     && ln -sf /usr/share/novnc/vnc.html /usr/share/novnc/index.html \
     && fc-cache -f -v \
+    && mkdir -p /root/Downloads /tmp/downloads && chmod 777 /root/Downloads /tmp/downloads \
     # 6. 安装 Python 依赖（含 playwright 及 playwright-stealth 反爬加固库）
     && pip install --no-cache-dir -i https://mirrors.cloud.tencent.com/pypi/simple/ \
         playwright==1.61.0 \

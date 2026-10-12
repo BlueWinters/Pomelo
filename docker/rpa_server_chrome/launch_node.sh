@@ -309,6 +309,9 @@ mkdir -p /run/dbus && rm -f /run/dbus/pid
 dbus-daemon --system --fork 2>/dev/null || true
 rm -f /tmp/chrome-profile/Singleton* 2>/dev/null || true
 rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
+# 预创建 Chrome 默认下载目录及共享临时下载目录并赋权，防止无头下载因路径不存在而丢弃
+mkdir -p /root/Downloads /tmp/downloads
+chmod 777 /root/Downloads /tmp/downloads
 
 # 2. 启动 Xvfb 虚拟显示屏幕
 echo "[entrypoint] 🖥️ Starting Xvfb on display ${DISPLAY:-:99} (${RESOLUTION:-1920x1080x24})..."
@@ -345,7 +348,7 @@ python3 /usr/local/bin/cdp_relay.py \
     --listen-port "${CDP_RELAY_PORT:-9222}" \
     --target-port "${CHROME_CDP_PORT:-9229}" &
 
-# 8. 启动 Google Chrome (优化参数: 禁用首次引导和搜索引擎选择窗口，快速开启 CDP)
+# 8. 启动 Google Chrome (优化参数: 禁用首次引导和搜索引擎选择窗口，允许文件下载，快速开启 CDP)
 echo "[entrypoint] 🚀 Starting Google Chrome with CDP on port ${CHROME_CDP_PORT:-9229}..."
 DISPLAY="${DISPLAY:-:99}" google-chrome \
     --no-sandbox \
@@ -354,7 +357,8 @@ DISPLAY="${DISPLAY:-:99}" google-chrome \
     --no-first-run \
     --no-default-browser-check \
     --disable-search-engine-choice-screen \
-    --disable-features=Translate \
+    --disable-features=Translate,InsecureDownloadWarnings \
+    --safebrowsing-disable-download-protection \
     --disable-gpu \
     --remote-allow-origins=* \
     --log-level=3 \
@@ -412,6 +416,7 @@ CONTAINER_ID=$(docker run -d \
   -e RPA_HEARTBEAT_INTERVAL=7200 \
   -v "${VOLUME_NAME}:/tmp/chrome-profile" \
   -v "${ENTRYPOINT_PATCH}:/entrypoint.sh:ro" \
+  -v "${CDP_RELAY_SRC:-/home/ubuntu/caimiao_backend/docker/chrome/cdp_relay.py}:/usr/local/bin/cdp_relay.py:ro" \
   -v /etc/localtime:/etc/localtime:ro \
   -v /etc/timezone:/etc/timezone:ro \
   --health-cmd="python3 -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:9222/json/version\", timeout=3)' || exit 1" \
