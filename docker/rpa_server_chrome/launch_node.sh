@@ -268,6 +268,12 @@ if [ -n "${TARGET_NET}" ]; then
     if [ -z "${RPA_REGISTER_URL}" ] || echo "${RPA_REGISTER_URL}" | grep -q "${HOST_IP}"; then
         CONTAINER_REGISTER_URL="http://api:8000/dashboard/rpa/pool/nodes/register"
     fi
+else
+    # 未加入集群网络时，若发现注册目标为 Docker 内网域名 api:8000，则自动探测修正为宿主物理 IP / 网关 IP
+    if echo "${CONTAINER_REGISTER_URL}" | grep -q "://api:"; then
+        echo "⚠️ 未连接 Docker 集群网络，自动将内网域名 'api' 修正为宿主直连 IP (${HOST_IP})..."
+        CONTAINER_REGISTER_URL=$(echo "${CONTAINER_REGISTER_URL}" | sed "s|://api:|://${HOST_IP}:|")
+    fi
 fi
 
 echo "=============================================================================="
@@ -292,14 +298,100 @@ echo "  📦 Chrome 镜像版本 (IMAGE)  : ${IMAGE}"
 echo "  🤖 算力池自注册 URL         : ${CONTAINER_REGISTER_URL}"
 echo "=============================================================================="
 
-# 6. 执行 Docker Run 启动容器
+# 6. 生成防弹窗优化的 entrypoint 补丁脚本 (确保 Chrome 启动不受首次引导阻塞，CDP 快速就绪)
+ENTRYPOINT_PATCH="/tmp/rpa_entrypoint_${NODE_ID}.sh"
+cat << 'EOF_ENTRY' > "${ENTRYPOINT_PATCH}"
+#!/bin/bash
+set -e
+
+# 1. 残留与锁文件清理
+mkdir -p /run/dbus && rm -f /run/dbus/pid
+dbus-daemon --system --fork 2>/dev/null || true
+rm -f /tmp/chrome-profile/Singleton* 2>/dev/null || true
+rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
+
+# 2. 启动 Xvfb 虚拟显示屏幕
+echo "[entrypoint] 🖥️ Starting Xvfb on display ${DISPLAY:-:99} (${RESOLUTION:-1920x1080x24})..."
+Xvfb "${DISPLAY:-:99}" -screen 0 "${RESOLUTION:-1920x1080x24}" -ac +extension GLX +render -noreset &
+sleep 1
+
+# 3. 启动轻量级窗口管理器 Fluxbox
+echo "[entrypoint] 🪟 Starting Fluxbox window manager..."
+DISPLAY="${DISPLAY:-:99}" fluxbox &
+
+# 4. 启动 x11vnc 抓屏服务
+echo "[entrypoint] 📡 Starting x11vnc on port ${VNC_PORT:-5900}..."
+if [ -n "$VNC_PASSWORD" ]; then
+    mkdir -p ~/.vnc
+    x11vnc -storepasswd "$VNC_PASSWORD" ~/.vnc/passwd
+    x11vnc -display "${DISPLAY:-:99}" -forever -shared -rfbport "${VNC_PORT:-5900}" -rfbauth ~/.vnc/passwd -bg -o /tmp/x11vnc.log
+else
+    x11vnc -display "${DISPLAY:-:99}" -forever -shared -rfbport "${VNC_PORT:-5900}" -nopw -bg -o /tmp/x11vnc.log
+fi
+
+# 5. 启动 websockify
+echo "[entrypoint] 🌐 Starting noVNC websockify on port ${NOVNC_PORT:-6080}..."
+websockify --web /usr/share/novnc "${NOVNC_PORT:-6080}" "localhost:${VNC_PORT:-5900}" &
+
+# 6. 启动 Dashboard 运维服务
+python3 /usr/local/bin/rpa_server.py \
+    --port "${RPA_FILE_PORT:-9224}" \
+    --cdp-port "${CHROME_CDP_PORT:-9229}" \
+    --root "${RPA_FILE_ROOT:-/tmp/.sessions}" \
+    --token "${RPA_FILE_TOKEN:-}" &
+
+# 7. 启动 CDP 转发层
+python3 /usr/local/bin/cdp_relay.py \
+    --listen-port "${CDP_RELAY_PORT:-9222}" \
+    --target-port "${CHROME_CDP_PORT:-9229}" &
+
+# 8. 启动 Google Chrome (优化参数: 禁用首次引导和搜索引擎选择窗口，快速开启 CDP)
+echo "[entrypoint] 🚀 Starting Google Chrome with CDP on port ${CHROME_CDP_PORT:-9229}..."
+DISPLAY="${DISPLAY:-:99}" google-chrome \
+    --no-sandbox \
+    --disable-dev-shm-usage \
+    --disable-background-networking \
+    --no-first-run \
+    --no-default-browser-check \
+    --disable-search-engine-choice-screen \
+    --disable-features=Translate \
+    --disable-gpu \
+    --remote-allow-origins=* \
+    --log-level=3 \
+    --window-size=1920,1080 \
+    --window-position=0,0 \
+    --start-maximized \
+    --remote-debugging-port="${CHROME_CDP_PORT:-9229}" \
+    --user-data-dir=/tmp/chrome-profile \
+    about:blank &
+
+# 9. 启动 RPA 算力池自注册守护 Agent
+echo "[entrypoint] 🤖 Starting Chrome Node Agent for self-registration..."
+python3 /usr/local/bin/node_agent.py
+
+sleep 2
+echo "=========================================================================="
+echo "  🎉 noVNC 远程桌面接管就绪: http://<宿主机IP>:${NOVNC_PORT:-6080}/vnc.html"
+echo "  🔗 Chrome CDP 调试代理就绪: http://<容器IP>:${CDP_RELAY_PORT:-9222}"
+echo "  📂 会话文件与快照服务就绪: http://<容器IP>:${RPA_FILE_PORT:-9224}"
+echo "  🤖 算力池自注册 Agent 运行中: ${RPA_REGISTER_URL}"
+echo "=========================================================================="
+
+wait -n
+EOF_ENTRY
+chmod +x "${ENTRYPOINT_PATCH}"
+
+# 7. 执行 Docker Run 启动容器
 echo "🐳 正在拉起 Chrome 节点容器 (${CONTAINER_NAME})..."
 CONTAINER_ID=$(docker run -d \
   --name "${CONTAINER_NAME}" \
   --restart unless-stopped \
   --shm-size=2gb \
-  ${NET_ARG} \
-  --label com.docker.compose.project=caimiao_backend \
+  --add-host api:10.14.210.39 \
+  --add-host caimiao-master:10.14.210.39 \
+  --label com.docker.stack.namespace=caimiao \
+  --label com.docker.swarm.service.name="caimiao_rpa_${NODE_ID}" \
+  --label com.docker.compose.project=caimiao \
   --label com.docker.compose.service="${NODE_ID}" \
   -p "${HOST_BIND}:${VNC_PORT}:6080" \
   -p "${HOST_BIND}:${CDP_PORT}:9222" \
@@ -319,7 +411,7 @@ CONTAINER_ID=$(docker run -d \
   -e RPA_REGISTER_URL="${CONTAINER_REGISTER_URL}" \
   -e RPA_HEARTBEAT_INTERVAL=7200 \
   -v "${VOLUME_NAME}:/tmp/chrome-profile" \
-  -v /tmp:/tmp \
+  -v "${ENTRYPOINT_PATCH}:/entrypoint.sh:ro" \
   -v /etc/localtime:/etc/localtime:ro \
   -v /etc/timezone:/etc/timezone:ro \
   --health-cmd="python3 -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:9222/json/version\", timeout=3)' || exit 1" \
@@ -407,12 +499,12 @@ if [ $REGISTERED -eq 1 ]; then
     exit 0
 else
     echo ""
-    echo "⚠️ 警告: 容器已拉起，但在 ${TIMEOUT}s 内未检测到算力池注册成功确认。"
+    echo "❌ [ERROR] 注册超时: 容器已拉起，但在 ${TIMEOUT}s 内未检测到算力池注册成功确认。"
     echo "------------------------------------------------------------------------------"
     echo "  最新容器日志如下:"
-    docker logs --tail 20 "${CONTAINER_ID}" 2>&1 || true
+    docker logs --tail 25 "${CONTAINER_ID}" 2>&1 || true
     echo "------------------------------------------------------------------------------"
-    echo "💡 请执行 'docker logs -f ${CONTAINER_NAME}' 检查后端网络或 API 连通性。"
+    echo "💡 请执行 'docker logs -f ${CONTAINER_NAME}' 检查内部状态或网络。"
     echo "=============================================================================="
-    exit 0
+    exit 1
 fi

@@ -52,14 +52,19 @@ DISPLAY="${DISPLAY:-:99}" google-chrome \
     --no-sandbox \
     --disable-dev-shm-usage \
     --disable-background-networking \
-    --enable-unsafe-swiftshader \
+    --no-first-run \
+    --no-default-browser-check \
+    --disable-search-engine-choice-screen \
+    --disable-features=Translate \
+    --disable-gpu \
     --remote-allow-origins=* \
     --log-level=3 \
     --window-size=1920,1080 \
     --window-position=0,0 \
     --start-maximized \
     --remote-debugging-port="${CHROME_CDP_PORT:-9229}" \
-    --user-data-dir=/tmp/chrome-profile &
+    --user-data-dir=/tmp/chrome-profile \
+    about:blank &
 
 # 9. 启动 RPA 算力池自注册守护 Agent (前置探活 + 注册 + 心跳 + 优雅下线)
 echo "[entrypoint] 🤖 Starting Chrome Node Agent for self-registration..."

@@ -24,37 +24,78 @@ import threading
 import re
 
 
-def _pipe(src: socket.socket, dst: socket.socket, is_client: bool = False) -> None:
-    """单向搬运：把 src 的字节流写入 dst（支持 Host 头适配与半关闭），直至 EOF 或出错。"""
-    first_chunk = is_client
-    try:
-        while True:
-            data = src.recv(65536)
-            if not data:
-                break
-            if first_chunk:
-                # 兼容性重写：将外部请求的 Host 头重写为 Chrome 认可的 Host: localhost:9229
-                data = re.sub(rb'(?i)Host:\s*[^\r\n]+', b'Host: localhost:9229', data, count=1)
-                first_chunk = False
-            dst.sendall(data)
-    except OSError:
-        pass
-    finally:
-        try:
-            dst.shutdown(socket.SHUT_WR)
-        except OSError:
-            pass
-
-
 def _handle_conn(client: socket.socket, target: tuple) -> None:
-    """为单个入站连接建立到 Chrome 的上游连接并双向透传。"""
+    """为单个入站连接建立到 Chrome 的上游连接并双向透传，同时适配 CDP WebSocket URL。"""
     try:
         upstream = socket.create_connection(target, timeout=5)
     except OSError:
         client.close()
         return
-    a = threading.Thread(target=_pipe, args=(client, upstream, True), daemon=True)
-    b = threading.Thread(target=_pipe, args=(upstream, client, False), daemon=True)
+
+    # 共享上下文：保存客户端请求的实际 Host 头 (如 10.14.210.51:9222)
+    state = {"client_host": b"localhost:9222"}
+
+    def pipe_client_to_upstream():
+        first_chunk = True
+        try:
+            while True:
+                data = client.recv(65536)
+                if not data:
+                    break
+                if first_chunk:
+                    m = re.search(rb'(?i)Host:\s*([^\r\n]+)', data)
+                    if m:
+                        state["client_host"] = m.group(1).strip()
+                    # 兼容性重写：将外部请求的 Host 头重写为 Chrome 认可的 Host: localhost:9229
+                    data = re.sub(rb'(?i)Host:\s*[^\r\n]+', b'Host: localhost:9229', data, count=1)
+                    first_chunk = False
+                upstream.sendall(data)
+        except OSError:
+            pass
+        finally:
+            try:
+                upstream.shutdown(socket.SHUT_WR)
+            except OSError:
+                pass
+
+    def pipe_upstream_to_client():
+        first_chunk = True
+        try:
+            while True:
+                data = upstream.recv(65536)
+                if not data:
+                    break
+                if first_chunk:
+                    # 若 Chrome 返回 HTTP 响应且含有 webSocketDebuggerUrl，重写为客户端请求的目标 Host:Port
+                    if b'webSocketDebuggerUrl' in data or b'devtoolsFrontendUrl' in data:
+                        target_host = state["client_host"]
+                        if b'\r\n\r\n' in data:
+                            headers_part, body_part = data.split(b'\r\n\r\n', 1)
+                            new_body = re.sub(rb'ws://(?:localhost|127\.0\.0\.1):9229', b'ws://' + target_host, body_part)
+                            new_body = re.sub(rb'ws=(?:localhost|127\.0\.0\.1):9229', b'ws=' + target_host, new_body)
+                            diff = len(new_body) - len(body_part)
+                            m_cl = re.search(rb'(?i)Content-Length:\s*(\d+)', headers_part)
+                            if m_cl:
+                                new_cl = int(m_cl.group(1).decode()) + diff
+                                headers_part = re.sub(
+                                    rb'(?i)Content-Length:\s*\d+',
+                                    f'Content-Length: {new_cl}'.encode(),
+                                    headers_part,
+                                    count=1
+                                )
+                            data = headers_part + b'\r\n\r\n' + new_body
+                    first_chunk = False
+                client.sendall(data)
+        except OSError:
+            pass
+        finally:
+            try:
+                client.shutdown(socket.SHUT_WR)
+            except OSError:
+                pass
+
+    a = threading.Thread(target=pipe_client_to_upstream, daemon=True)
+    b = threading.Thread(target=pipe_upstream_to_client, daemon=True)
     a.start()
     b.start()
     a.join()
