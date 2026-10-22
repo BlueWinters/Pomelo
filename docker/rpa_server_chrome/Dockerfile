@@ -1,4 +1,33 @@
 ARG PYTHON_VERSION=3.10
+
+# ==========================================
+# 阶段零：提取 Git Commit 元数据（临时阶段，提取完即丢弃）
+# ==========================================
+FROM python:${PYTHON_VERSION}-slim-bookworm AS commit-extractor
+
+COPY .git /tmp/build_git/
+RUN if [ -d "/tmp/build_git" ] && [ -f "/tmp/build_git/HEAD" ]; then \
+        head=$(cat /tmp/build_git/HEAD 2>/dev/null); \
+        case "$head" in \
+            ref:*) \
+                ref="${head#ref: }"; \
+                commit=$(cat "/tmp/build_git/$ref" 2>/dev/null || grep -F "$ref" /tmp/build_git/packed-refs 2>/dev/null | cut -d" " -f1) ;; \
+            *) \
+                commit="$head" ;; \
+        esac; \
+        if [ -n "$commit" ]; then \
+            echo "$commit" | cut -c1-7 > /tmp/commit_id; \
+        else \
+            echo "none" > /tmp/commit_id; \
+        fi \
+    else \
+        echo "none" > /tmp/commit_id; \
+    fi
+
+
+# ==========================================
+# 阶段一：生产阶段
+# ==========================================
 FROM python:${PYTHON_VERSION}-slim-bookworm
 
 LABEL maintainer="xiaoye"
